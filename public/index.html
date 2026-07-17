@@ -77,6 +77,7 @@
   .mini:hover{background:var(--accent); color:var(--accent-ink);}
   .mini.del{color:var(--err); border-color:var(--err);}
   .mini.del:hover{background:var(--err); color:#fff;}
+  .tin{width:72px !important; padding:5px 8px !important; font-family:'IBM Plex Mono',monospace !important; font-size:12px !important; text-align:center;}
   .pvbox{display:none; margin-top:10px;}
   .pvbox.open{display:block;}
   .pvbox video{width:100%; max-height:280px; border-radius:8px; background:#000; display:block;}
@@ -210,7 +211,15 @@ function addItemDOM(i){
         '<div class="sel" id="sel'+i+'"><div class="hnd hL" id="hL'+i+'"></div><div class="hnd hR" id="hR'+i+'"></div></div>'+
       '</div>'+
       '<div class="tlabels" id="lb'+i+'">carregando miniaturas...</div>'+
-      '<div class="pvrow"><button class="mini" id="pvbtn'+i+'" type="button">▶ prévia do trecho</button></div>'+
+      '<div class="pvrow" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'+
+        '<button class="mini" id="pvbtn'+i+'" type="button">▶ prévia do trecho</button>'+
+        '<button class="mini" id="zin'+i+'" type="button">🔍 aproximar no trecho</button>'+
+        '<button class="mini" id="zout'+i+'" type="button" style="display:none">↩ visão geral</button>'+
+        '<span style="font-size:11px;color:var(--muted)">início</span>'+
+        '<input class="tin" id="ti'+i+'" placeholder="00:00">'+
+        '<span style="font-size:11px;color:var(--muted)">fim</span>'+
+        '<input class="tin" id="tf'+i+'" placeholder="01:00">'+
+      '</div>'+
       '<div class="pvbox" id="pvbox'+i+'"><video id="pvv'+i+'" playsinline controls preload="none"></video></div>'+
     '</div>';
   $('list').appendChild(div);
@@ -222,6 +231,7 @@ function removeItem(i){
   const item=videos[i];
   item.removed=true;
   const v=$('pvv'+i); if(v) v.pause();
+  if(item.thumbEl){ item.thumbEl.pause(); item.thumbEl.removeAttribute('src'); item.thumbEl=null; }
   if(item.url){ URL.revokeObjectURL(item.url); item.url=null; }
   const el=$('item'+i); if(el) el.remove();
   drawPreview();
@@ -232,50 +242,71 @@ function once(el,ev){return new Promise(r=>el.addEventListener(ev,r,{once:true})
 
 async function initTrim(i){
   const item=videos[i];
+  if(!item.url) item.url=URL.createObjectURL(item.file);
   const v=document.createElement('video');
   v.preload='auto'; v.muted=true;
-  v.src=URL.createObjectURL(item.file);
+  v.src=item.url;
   await once(v,'loadedmetadata');
   item.dur=v.duration||0;
   item.w=v.videoWidth; item.h=v.videoHeight;
   item.start=0;
   item.end=Math.min(item.dur, maxWin());
+  item.vs=0; item.ve=item.dur;   // faixa visível (pra zoom)
+  item.thumbEl=v;                // reaproveitado nos redesenhos do zoom
+  await drawStrip(i);
+  renderSel(i);
+  bindTrim(i);
+  bindZoom(i);
+  bindTimeInputs(i);
+  drawPreview();
+}
 
-  const cv=$('cv'+i), strip=$('strip'+i);
+async function drawStrip(i){
+  const item=videos[i];
+  if(item.removed) return;
+  const v=item.thumbEl, cv=$('cv'+i), strip=$('strip'+i);
+  if(!v||!cv||!strip) return;
   const W=strip.clientWidth||640, H=56, ratio=window.devicePixelRatio||1;
   cv.width=W*ratio; cv.height=H*ratio;
-  const ctx=cv.getContext('2d'); ctx.scale(ratio,ratio);
+  const ctx=cv.getContext('2d'); ctx.setTransform(ratio,0,0,ratio,0,0);
+  ctx.fillStyle='#000'; ctx.fillRect(0,0,W,H);
   const N=Math.max(6, Math.floor(W/80));
-  const tw=W/N, th=H;
+  const tw=W/N, th=H, span=item.ve-item.vs;
+  const gen=item.stripGen=(item.stripGen||0)+1; // cancela redesenho antigo se der outro zoom
   for(let k=0;k<N;k++){
+    if(item.stripGen!==gen||item.removed) return;
     try{
-      v.currentTime=Math.min(item.dur*(k+0.5)/N, Math.max(0,item.dur-0.1));
+      v.currentTime=Math.min(item.vs+span*(k+0.5)/N, Math.max(0,item.dur-0.1));
       await once(v,'seeked');
       const s=Math.max(tw/v.videoWidth, th/v.videoHeight);
       const dw=v.videoWidth*s, dh=v.videoHeight*s;
       ctx.drawImage(v, k*tw+(tw-dw)/2, (th-dh)/2, dw, dh);
     }catch(e){}
   }
-  URL.revokeObjectURL(v.src);
-  renderSel(i);
-  bindTrim(i);
-  drawPreview();
 }
 
 function renderSel(i){
   const item=videos[i], sel=$('sel'+i), lb=$('lb'+i);
   if(item.removed||!sel||!lb) return;
   if(!item.dur){lb.textContent='não foi possível ler este vídeo'; return;}
-  sel.style.left=(item.start/item.dur*100)+'%';
-  sel.style.width=(Math.max(0.5,(item.end-item.start))/item.dur*100)+'%';
+  const span=item.ve-item.vs;
+  const left=((item.start-item.vs)/span)*100;
+  const width=(Math.max(item.end-item.start, span*0.006)/span)*100;
+  sel.style.left=Math.max(-2,left)+'%';
+  sel.style.width=Math.min(104, width)+'%';
+  const zoomed=(item.vs>0.01 || item.ve<item.dur-0.01);
   lb.innerHTML='trecho: <b>'+fmt(item.start)+'</b> → <b>'+fmt(item.end)+'</b> ('+Math.round(item.end-item.start)+'s)'+
-               '<span>vídeo: '+fmt(item.dur)+'</span>';
+               '<span>'+(zoomed?('visão: '+fmt(item.vs)+'–'+fmt(item.ve)):('vídeo: '+fmt(item.dur)))+'</span>';
+  const ti=$('ti'+i), tf=$('tf'+i);
+  if(ti&&document.activeElement!==ti) ti.value=fmt(item.start);
+  if(tf&&document.activeElement!==tf) tf.value=fmt(item.end);
+  const zo=$('zout'+i); if(zo) zo.style.display=zoomed?'':'none';
 }
 
 function bindTrim(i){
   const item=videos[i], strip=$('strip'+i), sel=$('sel'+i), hL=$('hL'+i), hR=$('hR'+i);
   let mode=null, x0=0, s0=0, e0=0;
-  const px2t=px=>px/strip.clientWidth*item.dur;
+  const px2t=px=>px/strip.clientWidth*(item.ve-item.vs);
 
   sel.addEventListener('pointerdown',e=>{
     mode = (e.target===hL)?'l' : (e.target===hR)?'r' : 'm';
@@ -336,6 +367,60 @@ function closePreview(i){
 function togglePreview(i){
   if($('pvbox'+i).classList.contains('open')) closePreview(i);
   else playSegment(i);
+}
+
+// ---------- zoom da linha do tempo ----------
+function bindZoom(i){
+  $('zin'+i).addEventListener('click',async()=>{
+    const item=videos[i];
+    if(!item.dur) return;
+    // aproxima em volta do trecho selecionado (com folga pros lados)
+    const selLen=Math.max(1,item.end-item.start);
+    const span=Math.max(selLen*3, 20);
+    if(span>=item.ve-item.vs-0.5 && (item.vs>0||item.ve<item.dur)) return; // já está no zoom máximo útil
+    const center=(item.start+item.end)/2;
+    item.vs=Math.max(0, center-span/2);
+    item.ve=Math.min(item.dur, item.vs+span);
+    item.vs=Math.max(0, item.ve-span);
+    renderSel(i);
+    await drawStrip(i);
+  });
+  $('zout'+i).addEventListener('click',async()=>{
+    const item=videos[i];
+    item.vs=0; item.ve=item.dur;
+    renderSel(i);
+    await drawStrip(i);
+  });
+}
+
+// ---------- campos de tempo digitáveis ----------
+function parseT(s){
+  s=(s||'').trim();
+  if(!s) return null;
+  const p=s.split(':').map(x=>parseFloat(x));
+  if(p.some(isNaN)) return null;
+  let t=0; p.forEach(x=>t=t*60+x);
+  return t;
+}
+function bindTimeInputs(i){
+  const apply=()=>{
+    const item=videos[i];
+    if(!item.dur) return;
+    const win=maxWin();
+    let s=parseT($('ti'+i).value), e=parseT($('tf'+i).value);
+    if(s===null) s=item.start;
+    if(e===null) e=item.end;
+    s=Math.max(0, Math.min(s, item.dur-1));
+    e=Math.max(s+1, Math.min(e, item.dur));
+    if(e-s>win) e=s+win;
+    item.start=s; item.end=e;
+    renderSel(i);
+    livePreview(i, item.start, true);
+  };
+  ['ti'+i,'tf'+i].forEach(id=>{
+    $(id).addEventListener('change',apply);
+    $(id).addEventListener('keydown',ev=>{ if(ev.key==='Enter'){ ev.target.blur(); } });
+  });
 }
 function playSegment(i){
   const item=videos[i];
