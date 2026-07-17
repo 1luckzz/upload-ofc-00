@@ -75,6 +75,8 @@
   .pvrow{margin-top:8px;}
   .mini{font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--accent); background:transparent; border:1px solid var(--accent); border-radius:6px; padding:4px 10px; cursor:pointer;}
   .mini:hover{background:var(--accent); color:var(--accent-ink);}
+  .mini.del{color:var(--err); border-color:var(--err);}
+  .mini.del:hover{background:var(--err); color:#fff;}
   .pvbox{display:none; margin-top:10px;}
   .pvbox.open{display:block;}
   .pvbox video{width:100%; max-height:280px; border-radius:8px; background:#000; display:block;}
@@ -156,7 +158,7 @@
 
 <script>
 const $=id=>document.getElementById(id);
-let videos=[], audioFile=null, jobId=null, pollTimer=null;
+let videos=[], audioFile=null, jobId=null, pollTimer=null, sendMap=[];
 
 function fmt(t){
   t=Math.max(0,t);
@@ -200,6 +202,7 @@ function addItemDOM(i){
       '<div class="bar"><i id="bar'+i+'"></i></div>'+
       '<span class="fstatus" id="st'+i+'">na fila</span>'+
       '<span id="dl'+i+'"></span>'+
+      '<button class="mini del" id="rm'+i+'" type="button" title="Remover da lista">✕</button>'+
     '</div>'+
     '<div class="trim">'+
       '<div class="strip" id="strip'+i+'">'+
@@ -211,7 +214,17 @@ function addItemDOM(i){
       '<div class="pvbox" id="pvbox'+i+'"><video id="pvv'+i+'" playsinline controls preload="none"></video></div>'+
     '</div>';
   $('list').appendChild(div);
-  $('pvbtn'+i).addEventListener('click',()=>playSegment(i));
+  $('pvbtn'+i).addEventListener('click',()=>togglePreview(i));
+  $('rm'+i).addEventListener('click',()=>removeItem(i));
+}
+
+function removeItem(i){
+  const item=videos[i];
+  item.removed=true;
+  const v=$('pvv'+i); if(v) v.pause();
+  if(item.url){ URL.revokeObjectURL(item.url); item.url=null; }
+  const el=$('item'+i); if(el) el.remove();
+  drawPreview();
 }
 
 // ---------- miniaturas + janela de corte ----------
@@ -251,6 +264,7 @@ async function initTrim(i){
 
 function renderSel(i){
   const item=videos[i], sel=$('sel'+i), lb=$('lb'+i);
+  if(item.removed||!sel||!lb) return;
   if(!item.dur){lb.textContent='não foi possível ler este vídeo'; return;}
   sel.style.left=(item.start/item.dur*100)+'%';
   sel.style.width=(Math.max(0.5,(item.end-item.start))/item.dur*100)+'%';
@@ -310,12 +324,18 @@ function ensurePreview(i){
   return v;
 }
 function openPreview(i){
-  // fecha as outras pra não pesar com muitos vídeos
-  document.querySelectorAll('.pvbox.open').forEach(b=>{
-    if(b.id!=='pvbox'+i){ b.classList.remove('open'); const vv=b.querySelector('video'); if(vv) vv.pause(); }
-  });
   $('pvbox'+i).classList.add('open');
+  $('pvbtn'+i).textContent='✕ fechar prévia';
   return ensurePreview(i);
+}
+function closePreview(i){
+  $('pvbox'+i).classList.remove('open');
+  $('pvbtn'+i).textContent='▶ prévia do trecho';
+  const v=$('pvv'+i); if(v) v.pause();
+}
+function togglePreview(i){
+  if($('pvbox'+i).classList.contains('open')) closePreview(i);
+  else playSegment(i);
 }
 function playSegment(i){
   const item=videos[i];
@@ -343,7 +363,7 @@ function livePreview(i, t, force){
 $('dur').addEventListener('input',()=>{
   const win=maxWin();
   videos.forEach((item,i)=>{
-    if(item.dur && item.end-item.start>win){
+    if(!item.removed && item.dur && item.end-item.start>win){
       item.end=Math.min(item.start+win, item.dur);
       renderSel(i);
     }
@@ -354,7 +374,7 @@ $('dur').addEventListener('input',()=>{
 ['txt','pos','size','cor','box'].forEach(id=>$(id).addEventListener('input',drawPreview));
 async function drawPreview(){
   const txt=$('txt').value.trim();
-  const ready=videos.find(v=>v.w);
+  const ready=videos.find(v=>!v.removed&&v.w);
   if(!txt||!ready){$('pvWrap').style.display='none';return;}
   $('pvWrap').style.display='block';
   const cv=$('pv'); cv.width=ready.w; cv.height=ready.h;
@@ -410,23 +430,25 @@ async function makeOverlayBlob(w,h){
 
 // ---------- envio + acompanhamento ----------
 $('go').addEventListener('click',async()=>{
-  if(!videos.length){setStatus('Adicione pelo menos um vídeo.');return;}
-  if(videos.some(v=>!v.dur)){setStatus('Aguarde as miniaturas carregarem.');return;}
+  const active=videos.map((v,i)=>({v,i})).filter(x=>!x.v.removed);
+  if(!active.length){setStatus('Adicione pelo menos um vídeo.');return;}
+  if(active.some(x=>!x.v.dur)){setStatus('Aguarde as miniaturas carregarem.');return;}
   const txt=$('txt').value.trim();
   const amode=document.querySelector('input[name=amode]:checked').value;
   if(amode!=='none' && !audioFile){setStatus('Selecione o arquivo de áudio ou marque "Não adicionar áudio".');return;}
 
   $('go').disabled=true; $('zip').disabled=true;
-  videos.forEach((v,i)=>{$('st'+i).textContent='enviando';$('st'+i).className='fstatus run';$('bar'+i).style.width='0%';$('dl'+i).innerHTML='';});
+  active.forEach(({i})=>{$('st'+i).textContent='enviando';$('st'+i).className='fstatus run';$('bar'+i).style.width='0%';$('dl'+i).innerHTML='';});
+  sendMap=active.map(x=>x.i);
 
   const fd=new FormData();
   const items=[];
-  for(const item of videos){
+  for(const {v:item} of active){
     fd.append('videos', item.file, item.file.name);
     items.push({start:item.start, len:Math.max(0.5,item.end-item.start)});
   }
   if(txt){
-    for(const item of videos){
+    for(const {v:item} of active){
       const blob=await makeOverlayBlob(item.w,item.h);
       fd.append('overlays', blob, 'ov.png');
     }
@@ -462,12 +484,14 @@ function poll(){
       if(!r.ok) throw 0;
       const job=await r.json();
       let done=0;
-      job.files.forEach((f,i)=>{
+      job.files.forEach((f,j)=>{
+        const i=sendMap[j]!==undefined?sendMap[j]:j;
         const st=$('st'+i), bar=$('bar'+i);
+        if(!st||!bar) return;
         if(f.status==='processando'){st.textContent='processando'; st.className='fstatus run'; bar.style.width=f.progress+'%';}
         else if(f.status==='concluído'){
           st.textContent='concluído'; st.className='fstatus ok'; bar.style.width='100%'; done++;
-          if(!$('dl'+i).innerHTML) $('dl'+i).innerHTML='<a class="fdl" href="/api/jobs/'+jobId+'/files/'+i+'">baixar</a>';
+          if(!$('dl'+i).innerHTML) $('dl'+i).innerHTML='<a class="fdl" href="/api/jobs/'+jobId+'/files/'+j+'">baixar</a>';
         }
         else if(f.status==='erro'){st.textContent='erro'; st.className='fstatus err'; done++;}
       });
