@@ -62,7 +62,7 @@
   .status-line{font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--muted); margin-top:14px; min-height:18px;}
   .hint{font-size:12px; color:var(--muted); margin-top:10px; line-height:1.5;}
   .preview{margin-top:14px; background:var(--panel2); border:1px solid var(--line); border-radius:10px; padding:12px; display:none;}
-  .preview canvas{width:100%; border-radius:6px; background:#000;}
+  .preview canvas{display:block; max-width:100%; max-height:380px; width:auto; margin:0 auto; border-radius:6px; background:#000;}
   .trim{margin-top:10px;}
   .strip{position:relative; height:56px; border-radius:8px; overflow:hidden; background:#000; user-select:none; touch-action:none;}
   .strip canvas{width:100%; height:100%; display:block;}
@@ -587,22 +587,30 @@ $('size').addEventListener('change',()=>{
   drawPreview();
 });
 // clique/arrasto no preview posiciona o texto (modo personalizado)
+let showGuides=false, snapX=null, snapY=null;
+const GUIAS_X=[0.5], GUIAS_Y=[0.15,0.5,0.85], SNAP=0.025;
 (function bindPosPicker(){
   const pv=$('pv');
   let dragging=false;
   const setPos=e=>{
     const r=pv.getBoundingClientRect();
-    posX=Math.min(1,Math.max(0,(e.clientX-r.left)/r.width));
-    posY=Math.min(1,Math.max(0,(e.clientY-r.top)/r.height));
+    let x=Math.min(1,Math.max(0,(e.clientX-r.left)/r.width));
+    let y=Math.min(1,Math.max(0,(e.clientY-r.top)/r.height));
+    snapX=null; snapY=null;
+    GUIAS_X.forEach(t=>{ if(Math.abs(x-t)<SNAP){ x=t; snapX=t; } });
+    GUIAS_Y.forEach(t=>{ if(Math.abs(y-t)<SNAP){ y=t; snapY=t; } });
+    posX=x; posY=y;
     drawPreview();
   };
   pv.addEventListener('pointerdown',e=>{
     if($('pos').value!=='custom') return;
-    dragging=true; pv.setPointerCapture(e.pointerId); setPos(e); e.preventDefault();
+    dragging=true; showGuides=true;
+    pv.setPointerCapture(e.pointerId); setPos(e); e.preventDefault();
   });
   pv.addEventListener('pointermove',e=>{ if(dragging) setPos(e); });
-  pv.addEventListener('pointerup',()=>dragging=false);
-  pv.addEventListener('pointercancel',()=>dragging=false);
+  const endDrag=()=>{ if(dragging){ dragging=false; showGuides=false; snapX=snapY=null; drawPreview(); } };
+  pv.addEventListener('pointerup',endDrag);
+  pv.addEventListener('pointercancel',endDrag);
 })();
 async function drawPreview(){
   const txt=$('txt').value.trim();
@@ -613,6 +621,20 @@ async function drawPreview(){
   const ctx=cv.getContext('2d');
   ctx.fillStyle='#333'; ctx.fillRect(0,0,ready.w,ready.h);
   await drawText(ctx,ready.w,ready.h);
+  // guias de alinhamento enquanto arrasta no modo personalizado
+  if(showGuides && $('pos').value==='custom'){
+    const w=ready.w, h=ready.h, lw=Math.max(1.5, w/1080*2);
+    const linha=(x1,y1,x2,y2,ativa)=>{
+      ctx.save();
+      ctx.lineWidth=ativa?lw*1.6:lw;
+      ctx.strokeStyle=ativa?'#ffb224':'rgba(255,255,255,0.35)';
+      ctx.setLineDash(ativa?[]:[10*w/1080,10*w/1080]);
+      ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+      ctx.restore();
+    };
+    GUIAS_X.forEach(t=>linha(w*t,0,w*t,h, snapX===t));
+    GUIAS_Y.forEach(t=>linha(0,h*t,w,h*t, snapY===t));
+  }
 }
 
 async function drawText(ctx,w,h){
