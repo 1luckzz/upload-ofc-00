@@ -1,0 +1,14 @@
+{
+  "name": "editor-em-massa",
+  "version": "1.0.0",
+  "description": "Edicao em massa de videos: corte de trecho, texto e audio aplicados em lote",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "multer": "^1.4.5-lts.1",
+    "archiver": "^7.0.1"
+  }
+}

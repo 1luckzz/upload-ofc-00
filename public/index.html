@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fila de Render — Editor em Massa</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;800&family=IBM+Plex+Mono:wght@400;500&family=Archivo+Black&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0f1216; --panel:#161b22; --panel2:#1c232d; --line:#2a3441;
+    --text:#e8edf3; --muted:#8b98a9; --accent:#ffb224; --accent-ink:#1a1200;
+    --ok:#4ade80; --err:#f87171;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{background:var(--bg); color:var(--text); font-family:'Sora',sans-serif; min-height:100vh; padding:32px 16px 80px;}
+  .wrap{max-width:880px; margin:0 auto;}
+  header{margin-bottom:28px;}
+  .eyebrow{font-family:'IBM Plex Mono',monospace; font-size:12px; letter-spacing:.18em; color:var(--accent); text-transform:uppercase;}
+  h1{font-size:clamp(26px,4vw,38px); font-weight:800; letter-spacing:-.02em; margin-top:6px;}
+  header p{color:var(--muted); margin-top:8px; max-width:60ch; font-size:14px; line-height:1.6;}
+  .card{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:20px; margin-bottom:16px;}
+  .card h2{font-size:15px; font-weight:600; margin-bottom:14px; display:flex; align-items:center; gap:10px;}
+  .step{font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--accent); border:1px solid var(--accent); border-radius:6px; padding:2px 7px;}
+  .drop{border:1.5px dashed var(--line); border-radius:10px; padding:28px; text-align:center; cursor:pointer; transition:border-color .15s, background .15s; color:var(--muted); font-size:14px;}
+  .drop.over{border-color:var(--accent); background:#ffb2240d;}
+  .drop strong{color:var(--text);}
+  label{display:block; font-size:12px; color:var(--muted); margin-bottom:6px;}
+  input[type=text], input[type=number], select, textarea{
+    width:100%; background:var(--panel2); border:1px solid var(--line); border-radius:8px;
+    color:var(--text); padding:10px 12px; font-family:'Sora',sans-serif; font-size:14px;
+  }
+  textarea{resize:vertical; min-height:64px;}
+  input:focus, select:focus, textarea:focus{outline:2px solid var(--accent); outline-offset:1px; border-color:transparent;}
+  .row{display:flex; gap:14px; flex-wrap:wrap; align-items:flex-end;}
+  .row > div{flex:1; min-width:130px;}
+  input[type=color]{width:100%; height:41px; background:var(--panel2); border:1px solid var(--line); border-radius:8px; padding:4px; cursor:pointer;}
+  .check{display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text); cursor:pointer; margin-top:10px;}
+  .check input{accent-color:var(--accent); width:16px; height:16px;}
+  .radio-group{display:flex; gap:8px; flex-wrap:wrap;}
+  .radio-group label{display:flex; align-items:center; gap:7px; background:var(--panel2); border:1px solid var(--line); border-radius:8px; padding:9px 13px; cursor:pointer; font-size:13px; color:var(--text); margin:0;}
+  .radio-group input{accent-color:var(--accent);}
+  .radio-group label:has(input:checked){border-color:var(--accent); background:#ffb2240f;}
+  .filelist{font-family:'IBM Plex Mono',monospace; font-size:12.5px; margin-top:14px;}
+  .fitem{padding:12px 4px; border-bottom:1px solid var(--line);}
+  .fitem:last-child{border-bottom:none;}
+  .fhead{display:flex; align-items:center; gap:12px;}
+  .fname{flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .fstatus{color:var(--muted); font-size:11px; min-width:92px; text-align:right;}
+  .fstatus.ok{color:var(--ok);} .fstatus.err{color:var(--err);} .fstatus.run{color:var(--accent);}
+  .bar{height:4px; background:var(--panel2); border-radius:2px; overflow:hidden; width:110px;}
+  .bar i{display:block; height:100%; width:0%; background:var(--accent); transition:width .2s;}
+  .fdl{color:var(--accent); text-decoration:none; font-size:11px; border:1px solid var(--accent); border-radius:5px; padding:2px 8px;}
+  .fdl:hover{background:var(--accent); color:var(--accent-ink);}
+  .btn{display:inline-flex; align-items:center; gap:8px; background:var(--accent); color:var(--accent-ink); border:none;
+    font-family:'Sora',sans-serif; font-weight:600; font-size:15px; padding:13px 26px; border-radius:10px; cursor:pointer; transition:transform .1s, opacity .15s;}
+  .btn:hover{transform:translateY(-1px);}
+  .btn:disabled{opacity:.45; cursor:not-allowed; transform:none;}
+  .btn.ghost{background:transparent; color:var(--accent); border:1px solid var(--accent);}
+  .actions{display:flex; gap:12px; flex-wrap:wrap; margin-top:8px;}
+  .status-line{font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--muted); margin-top:14px; min-height:18px;}
+  .hint{font-size:12px; color:var(--muted); margin-top:10px; line-height:1.5;}
+  .preview{margin-top:14px; background:var(--panel2); border:1px solid var(--line); border-radius:10px; padding:12px; display:none;}
+  .preview canvas{width:100%; border-radius:6px; background:#000;}
+  .trim{margin-top:10px;}
+  .strip{position:relative; height:56px; border-radius:8px; overflow:hidden; background:#000; user-select:none; touch-action:none;}
+  .strip canvas{width:100%; height:100%; display:block;}
+  .sel{position:absolute; top:0; bottom:0; border:2px solid var(--accent); border-radius:6px; box-shadow:0 0 0 9999px rgba(0,0,0,0.6); cursor:grab;}
+  .sel:active{cursor:grabbing;}
+  .hnd{position:absolute; top:0; bottom:0; width:14px; background:var(--accent); cursor:ew-resize; display:flex; align-items:center; justify-content:center;}
+  .hnd::after{content:''; width:3px; height:18px; border-radius:2px; background:var(--accent-ink); opacity:.6;}
+  .hL{left:-2px; border-radius:6px 0 0 6px;} .hR{right:-2px; border-radius:0 6px 6px 0;}
+  .tlabels{font-size:11px; color:var(--muted); margin-top:6px; display:flex; justify-content:space-between;}
+  .tlabels b{color:var(--accent); font-weight:500;}
+  .pvrow{margin-top:8px;}
+  .mini{font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--accent); background:transparent; border:1px solid var(--accent); border-radius:6px; padding:4px 10px; cursor:pointer;}
+  .mini:hover{background:var(--accent); color:var(--accent-ink);}
+  .pvbox{display:none; margin-top:10px;}
+  .pvbox.open{display:block;}
+  .pvbox video{width:100%; max-height:280px; border-radius:8px; background:#000; display:block;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Fila de render · processamento no servidor</div>
+    <h1>Editor em Massa</h1>
+    <p>Envie quantos vídeos quiser, escolha o trecho de cada um arrastando a janela amarela, defina um texto e um áudio — a mesma edição é aplicada em todos e você baixa tudo pronto.</p>
+  </header>
+
+  <div class="card">
+    <h2><span class="step">1</span> Vídeos e trechos</h2>
+    <div class="drop" id="dropVid">Arraste os vídeos aqui ou <strong>clique para selecionar</strong><br><span style="font-size:12px">MP4, MOV, WEBM · vários de uma vez · até 500 MB cada</span></div>
+    <input type="file" id="inVid" accept="video/*" multiple hidden>
+    <div class="row" style="margin-top:14px">
+      <div>
+        <label for="dur">Duração máxima do trecho (segundos)</label>
+        <input type="number" id="dur" min="1" value="60">
+      </div>
+    </div>
+    <p class="hint">Cada vídeo abaixo ganha uma linha do tempo: arraste a <b style="color:var(--accent)">janela amarela</b> para escolher o momento do vídeo, e as bordas para ajustar início e fim.</p>
+    <div class="filelist" id="list"></div>
+  </div>
+
+  <div class="card">
+    <h2><span class="step">2</span> Texto no vídeo</h2>
+    <textarea id="txt" placeholder="Digite o texto que vai aparecer em todos os vídeos (Enter quebra linha)"></textarea>
+    <div class="row" style="margin-top:14px">
+      <div>
+        <label for="pos">Posição</label>
+        <select id="pos">
+          <option value="top">Topo</option>
+          <option value="center">Centro</option>
+          <option value="bottom" selected>Rodapé</option>
+        </select>
+      </div>
+      <div>
+        <label for="size">Tamanho do texto</label>
+        <select id="size">
+          <option value="42">Pequeno</option>
+          <option value="58" selected>Médio</option>
+          <option value="76">Grande</option>
+        </select>
+      </div>
+      <div>
+        <label for="cor">Cor</label>
+        <input type="color" id="cor" value="#ffffff">
+      </div>
+    </div>
+    <label class="check"><input type="checkbox" id="box" checked> Caixa escura atrás do texto (melhor leitura)</label>
+    <div class="preview" id="pvWrap"><canvas id="pv"></canvas></div>
+  </div>
+
+  <div class="card">
+    <h2><span class="step">3</span> Áudio</h2>
+    <div class="drop" id="dropAud">Arraste o arquivo de áudio ou <strong>clique para selecionar</strong><br><span style="font-size:12px">MP3, WAV, M4A</span></div>
+    <input type="file" id="inAud" accept="audio/*" hidden>
+    <div class="filelist" id="audName"></div>
+    <div class="radio-group" style="margin-top:12px">
+      <label><input type="radio" name="amode" value="replace" checked> Substituir o áudio original</label>
+      <label><input type="radio" name="amode" value="mix"> Misturar com o original</label>
+      <label><input type="radio" name="amode" value="none"> Não adicionar áudio</label>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><span class="step">4</span> Processar</h2>
+    <div class="actions">
+      <button class="btn" id="go">▶ Enviar e processar</button>
+      <button class="btn ghost" id="zip" disabled>Baixar tudo (.zip)</button>
+    </div>
+    <div class="status-line" id="status"></div>
+    <p class="hint">Os vídeos são enviados pro servidor, processados um a um e ficam disponíveis pra download por 45 minutos.</p>
+  </div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+let videos=[], audioFile=null, jobId=null, pollTimer=null;
+
+function fmt(t){
+  t=Math.max(0,t);
+  const m=Math.floor(t/60), s=Math.floor(t%60);
+  return String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');
+}
+function maxWin(){
+  const v=parseFloat($('dur').value);
+  return (v&&v>0)?v:Infinity;
+}
+function esc(s){return s.replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));}
+function setStatus(t){$('status').textContent=t;}
+
+// ---------- upload local ----------
+function bindDrop(zone, input, onFiles){
+  zone.addEventListener('click',()=>input.click());
+  input.addEventListener('change',()=>onFiles([...input.files]));
+  zone.addEventListener('dragover',e=>{e.preventDefault();zone.classList.add('over');});
+  zone.addEventListener('dragleave',()=>zone.classList.remove('over'));
+  zone.addEventListener('drop',e=>{e.preventDefault();zone.classList.remove('over');onFiles([...e.dataTransfer.files]);});
+}
+bindDrop($('dropVid'),$('inVid'),async files=>{
+  const vids=files.filter(f=>f.type.startsWith('video')||/\.(mp4|mov|webm|mkv|avi)$/i.test(f.name));
+  for(const f of vids){
+    videos.push({file:f, start:0, end:0, dur:0, w:0, h:0});
+    addItemDOM(videos.length-1);
+    initTrim(videos.length-1);
+  }
+  drawPreview();
+});
+bindDrop($('dropAud'),$('inAud'),files=>{
+  if(files[0]){audioFile=files[0]; $('audName').innerHTML='<div class="fitem"><div class="fhead"><span class="fname">♪ '+esc(audioFile.name)+'</span></div></div>';}
+});
+
+function addItemDOM(i){
+  const div=document.createElement('div');
+  div.className='fitem'; div.id='item'+i;
+  div.innerHTML=
+    '<div class="fhead">'+
+      '<span class="fname">'+esc(videos[i].file.name)+'</span>'+
+      '<div class="bar"><i id="bar'+i+'"></i></div>'+
+      '<span class="fstatus" id="st'+i+'">na fila</span>'+
+      '<span id="dl'+i+'"></span>'+
+    '</div>'+
+    '<div class="trim">'+
+      '<div class="strip" id="strip'+i+'">'+
+        '<canvas id="cv'+i+'"></canvas>'+
+        '<div class="sel" id="sel'+i+'"><div class="hnd hL" id="hL'+i+'"></div><div class="hnd hR" id="hR'+i+'"></div></div>'+
+      '</div>'+
+      '<div class="tlabels" id="lb'+i+'">carregando miniaturas...</div>'+
+      '<div class="pvrow"><button class="mini" id="pvbtn'+i+'" type="button">▶ prévia do trecho</button></div>'+
+      '<div class="pvbox" id="pvbox'+i+'"><video id="pvv'+i+'" playsinline controls preload="none"></video></div>'+
+    '</div>';
+  $('list').appendChild(div);
+  $('pvbtn'+i).addEventListener('click',()=>playSegment(i));
+}
+
+// ---------- miniaturas + janela de corte ----------
+function once(el,ev){return new Promise(r=>el.addEventListener(ev,r,{once:true}));}
+
+async function initTrim(i){
+  const item=videos[i];
+  const v=document.createElement('video');
+  v.preload='auto'; v.muted=true;
+  v.src=URL.createObjectURL(item.file);
+  await once(v,'loadedmetadata');
+  item.dur=v.duration||0;
+  item.w=v.videoWidth; item.h=v.videoHeight;
+  item.start=0;
+  item.end=Math.min(item.dur, maxWin());
+
+  const cv=$('cv'+i), strip=$('strip'+i);
+  const W=strip.clientWidth||640, H=56, ratio=window.devicePixelRatio||1;
+  cv.width=W*ratio; cv.height=H*ratio;
+  const ctx=cv.getContext('2d'); ctx.scale(ratio,ratio);
+  const N=Math.max(6, Math.floor(W/80));
+  const tw=W/N, th=H;
+  for(let k=0;k<N;k++){
+    try{
+      v.currentTime=Math.min(item.dur*(k+0.5)/N, Math.max(0,item.dur-0.1));
+      await once(v,'seeked');
+      const s=Math.max(tw/v.videoWidth, th/v.videoHeight);
+      const dw=v.videoWidth*s, dh=v.videoHeight*s;
+      ctx.drawImage(v, k*tw+(tw-dw)/2, (th-dh)/2, dw, dh);
+    }catch(e){}
+  }
+  URL.revokeObjectURL(v.src);
+  renderSel(i);
+  bindTrim(i);
+  drawPreview();
+}
+
+function renderSel(i){
+  const item=videos[i], sel=$('sel'+i), lb=$('lb'+i);
+  if(!item.dur){lb.textContent='não foi possível ler este vídeo'; return;}
+  sel.style.left=(item.start/item.dur*100)+'%';
+  sel.style.width=(Math.max(0.5,(item.end-item.start))/item.dur*100)+'%';
+  lb.innerHTML='trecho: <b>'+fmt(item.start)+'</b> → <b>'+fmt(item.end)+'</b> ('+Math.round(item.end-item.start)+'s)'+
+               '<span>vídeo: '+fmt(item.dur)+'</span>';
+}
+
+function bindTrim(i){
+  const item=videos[i], strip=$('strip'+i), sel=$('sel'+i), hL=$('hL'+i), hR=$('hR'+i);
+  let mode=null, x0=0, s0=0, e0=0;
+  const px2t=px=>px/strip.clientWidth*item.dur;
+
+  sel.addEventListener('pointerdown',e=>{
+    mode = (e.target===hL)?'l' : (e.target===hR)?'r' : 'm';
+    x0=e.clientX; s0=item.start; e0=item.end;
+    sel.setPointerCapture(e.pointerId);
+    openPreview(i); // mostra a prévia assim que começa a mexer
+    livePreview(i, mode==='r'?item.end:item.start, true);
+    e.preventDefault();
+  });
+  sel.addEventListener('pointermove',e=>{
+    if(!mode) return;
+    const dt=px2t(e.clientX-x0), win=maxWin(), len=e0-s0;
+    if(mode==='m'){
+      let s=Math.min(Math.max(0,s0+dt), item.dur-len);
+      item.start=s; item.end=s+len;
+    }else if(mode==='l'){
+      let s=Math.min(Math.max(0,s0+dt), item.end-1);
+      if(item.end-s>win) s=item.end-win;
+      item.start=s;
+    }else{
+      let en=Math.max(Math.min(item.dur,e0+dt), item.start+1);
+      if(en-item.start>win) en=item.start+win;
+      item.end=en;
+    }
+    renderSel(i);
+    livePreview(i, mode==='r'?item.end:item.start); // frame acompanha o arrasto
+  });
+  const stop=()=>{
+    if(mode){
+      // ao soltar, posiciona a prévia no início do trecho
+      livePreview(i, item.start, true);
+    }
+    mode=null;
+  };
+  sel.addEventListener('pointerup',stop);
+  sel.addEventListener('pointercancel',stop);
+}
+
+// ---------- prévia do trecho ----------
+function ensurePreview(i){
+  const item=videos[i], v=$('pvv'+i);
+  if(!v.src){
+    if(!item.url) item.url=URL.createObjectURL(item.file);
+    v.src=item.url;
+  }
+  return v;
+}
+function openPreview(i){
+  // fecha as outras pra não pesar com muitos vídeos
+  document.querySelectorAll('.pvbox.open').forEach(b=>{
+    if(b.id!=='pvbox'+i){ b.classList.remove('open'); const vv=b.querySelector('video'); if(vv) vv.pause(); }
+  });
+  $('pvbox'+i).classList.add('open');
+  return ensurePreview(i);
+}
+function playSegment(i){
+  const item=videos[i];
+  if(!item.dur) return;
+  const v=openPreview(i);
+  if(v._stop) v.removeEventListener('timeupdate', v._stop);
+  v._stop=()=>{ if(v.currentTime>=item.end-0.05){ v.pause(); } };
+  v.addEventListener('timeupdate', v._stop);
+  const go=()=>{ v.currentTime=item.start; v.play().catch(()=>{}); };
+  if(v.readyState>=1) go(); else{ v.addEventListener('loadedmetadata',go,{once:true}); v.load(); }
+}
+function livePreview(i, t, force){
+  const box=$('pvbox'+i);
+  if(!box.classList.contains('open')) return; // só acompanha se a prévia estiver aberta
+  const v=ensurePreview(i);
+  v.pause();
+  const seek=()=>{ v.currentTime=Math.max(0, Math.min(t, videos[i].dur||t)); };
+  if(v.readyState<1){ v.addEventListener('loadedmetadata',seek,{once:true}); v.load(); return; }
+  const now=performance.now();
+  if(!force && v._last && now-v._last<120) return; // limita seeks durante o arrasto
+  v._last=now;
+  seek();
+}
+
+$('dur').addEventListener('input',()=>{
+  const win=maxWin();
+  videos.forEach((item,i)=>{
+    if(item.dur && item.end-item.start>win){
+      item.end=Math.min(item.start+win, item.dur);
+      renderSel(i);
+    }
+  });
+});
+
+// ---------- preview e PNG do texto ----------
+['txt','pos','size','cor','box'].forEach(id=>$(id).addEventListener('input',drawPreview));
+async function drawPreview(){
+  const txt=$('txt').value.trim();
+  const ready=videos.find(v=>v.w);
+  if(!txt||!ready){$('pvWrap').style.display='none';return;}
+  $('pvWrap').style.display='block';
+  const cv=$('pv'); cv.width=ready.w; cv.height=ready.h;
+  const ctx=cv.getContext('2d');
+  ctx.fillStyle='#333'; ctx.fillRect(0,0,ready.w,ready.h);
+  await drawText(ctx,ready.w,ready.h);
+}
+
+async function drawText(ctx,w,h){
+  await document.fonts.ready;
+  const txt=$('txt').value.trim(); if(!txt) return;
+  const scale=w/1080;
+  const fs=parseInt($('size').value)*scale;
+  ctx.font='400 '+fs+'px "Archivo Black", sans-serif';
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  const maxW=w*0.88, lines=[];
+  txt.split('\n').forEach(par=>{
+    let line='';
+    par.split(' ').forEach(word=>{
+      const test=line?line+' '+word:word;
+      if(ctx.measureText(test).width>maxW && line){lines.push(line); line=word;}
+      else line=test;
+    });
+    lines.push(line);
+  });
+  const lh=fs*1.25, blockH=lines.length*lh;
+  let cy;
+  const pos=$('pos').value;
+  if(pos==='top') cy=h*0.10+blockH/2;
+  else if(pos==='center') cy=h/2;
+  else cy=h*0.90-blockH/2;
+  if($('box').checked){
+    const bw=Math.min(maxW,Math.max(...lines.map(l=>ctx.measureText(l).width)))+fs*0.8;
+    const bh=blockH+fs*0.6;
+    ctx.fillStyle='rgba(0,0,0,0.55)';
+    roundRect(ctx,w/2-bw/2,cy-bh/2,bw,bh,fs*0.25); ctx.fill();
+  }
+  ctx.fillStyle=$('cor').value;
+  ctx.strokeStyle='rgba(0,0,0,0.6)'; ctx.lineWidth=fs*0.06;
+  lines.forEach((l,i)=>{
+    const y=cy-blockH/2+lh/2+i*lh;
+    ctx.strokeText(l,w/2,y); ctx.fillText(l,w/2,y);
+  });
+}
+function roundRect(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
+
+async function makeOverlayBlob(w,h){
+  const cv=document.createElement('canvas'); cv.width=w; cv.height=h;
+  const ctx=cv.getContext('2d');
+  await drawText(ctx,w,h);
+  return new Promise(r=>cv.toBlob(r,'image/png'));
+}
+
+// ---------- envio + acompanhamento ----------
+$('go').addEventListener('click',async()=>{
+  if(!videos.length){setStatus('Adicione pelo menos um vídeo.');return;}
+  if(videos.some(v=>!v.dur)){setStatus('Aguarde as miniaturas carregarem.');return;}
+  const txt=$('txt').value.trim();
+  const amode=document.querySelector('input[name=amode]:checked').value;
+  if(amode!=='none' && !audioFile){setStatus('Selecione o arquivo de áudio ou marque "Não adicionar áudio".');return;}
+
+  $('go').disabled=true; $('zip').disabled=true;
+  videos.forEach((v,i)=>{$('st'+i).textContent='enviando';$('st'+i).className='fstatus run';$('bar'+i).style.width='0%';$('dl'+i).innerHTML='';});
+
+  const fd=new FormData();
+  const items=[];
+  for(const item of videos){
+    fd.append('videos', item.file, item.file.name);
+    items.push({start:item.start, len:Math.max(0.5,item.end-item.start)});
+  }
+  if(txt){
+    for(const item of videos){
+      const blob=await makeOverlayBlob(item.w,item.h);
+      fd.append('overlays', blob, 'ov.png');
+    }
+  }
+  if(audioFile && amode!=='none') fd.append('audio', audioFile, audioFile.name);
+  fd.append('meta', JSON.stringify({items, amode}));
+
+  const xhr=new XMLHttpRequest();
+  xhr.open('POST','/api/jobs');
+  xhr.upload.onprogress=e=>{
+    if(e.lengthComputable) setStatus('Enviando arquivos... '+Math.round(e.loaded/e.total*100)+'%');
+  };
+  xhr.onload=()=>{
+    if(xhr.status===200){
+      jobId=JSON.parse(xhr.responseText).id;
+      setStatus('Enviado. Processando no servidor...');
+      poll();
+    }else{
+      let msg='Erro no envio.';
+      try{msg=JSON.parse(xhr.responseText).error||msg;}catch(e){}
+      setStatus(msg); $('go').disabled=false;
+    }
+  };
+  xhr.onerror=()=>{setStatus('Falha de conexão no envio.'); $('go').disabled=false;};
+  xhr.send(fd);
+});
+
+function poll(){
+  clearInterval(pollTimer);
+  pollTimer=setInterval(async()=>{
+    try{
+      const r=await fetch('/api/jobs/'+jobId);
+      if(!r.ok) throw 0;
+      const job=await r.json();
+      let done=0;
+      job.files.forEach((f,i)=>{
+        const st=$('st'+i), bar=$('bar'+i);
+        if(f.status==='processando'){st.textContent='processando'; st.className='fstatus run'; bar.style.width=f.progress+'%';}
+        else if(f.status==='concluído'){
+          st.textContent='concluído'; st.className='fstatus ok'; bar.style.width='100%'; done++;
+          if(!$('dl'+i).innerHTML) $('dl'+i).innerHTML='<a class="fdl" href="/api/jobs/'+jobId+'/files/'+i+'">baixar</a>';
+        }
+        else if(f.status==='erro'){st.textContent='erro'; st.className='fstatus err'; done++;}
+      });
+      if(job.status==='concluído'){
+        clearInterval(pollTimer);
+        const ok=job.files.filter(f=>f.status==='concluído').length;
+        setStatus('Pronto! '+ok+' de '+job.files.length+' vídeos processados. Downloads disponíveis por 45 min.');
+        if(ok) $('zip').disabled=false;
+        $('go').disabled=false;
+      }else{
+        setStatus('Processando no servidor... ('+done+' de '+job.files.length+' finalizados)');
+      }
+    }catch(e){
+      clearInterval(pollTimer);
+      setStatus('Perdi a conexão com o servidor. Recarregue e tente de novo.');
+      $('go').disabled=false;
+    }
+  },1500);
+}
+
+$('zip').addEventListener('click',()=>{
+  if(jobId) window.location='/api/jobs/'+jobId+'/zip';
+});
+</script>
+</body>
+</html>
