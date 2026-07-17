@@ -305,7 +305,7 @@ function renderSel(i){
 
 function bindTrim(i){
   const item=videos[i], strip=$('strip'+i), sel=$('sel'+i), hL=$('hL'+i), hR=$('hR'+i);
-  let mode=null, x0=0, s0=0, e0=0;
+  let mode=null, x0=0, s0=0, e0=0, panT=null;
   const px2t=px=>px/strip.clientWidth*(item.ve-item.vs);
 
   sel.addEventListener('pointerdown',e=>{
@@ -332,10 +332,24 @@ function bindTrim(i){
       item.end=en;
     }
     renderSel(i);
+    // auto-pan: com zoom ativo, se a janela encostar na borda, a visão desliza junto
+    const zoomed=item.vs>0.01||item.ve<item.dur-0.01;
+    if(zoomed){
+      const span=item.ve-item.vs;
+      let panned=false;
+      if(item.end>item.ve){ item.ve=Math.min(item.dur, item.end+span*0.15); item.vs=item.ve-span; panned=true; }
+      if(item.start<item.vs){ item.vs=Math.max(0, item.start-span*0.15); item.ve=item.vs+span; panned=true; }
+      if(panned){
+        renderSel(i);
+        clearTimeout(panT);
+        panT=setTimeout(()=>{ panT=null; drawStrip(i); },250); // redesenha miniaturas quando o arrasto dá uma pausa
+      }
+    }
     livePreview(i, mode==='r'?item.end:item.start); // frame acompanha o arrasto
   });
   const stop=()=>{
     if(mode){
+      if(panT){ clearTimeout(panT); panT=null; drawStrip(i); }
       // ao soltar, posiciona a prévia no início do trecho
       livePreview(i, item.start, true);
     }
