@@ -6,6 +6,7 @@
 <title>Fila de Render — Editor em Massa</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;800&family=IBM+Plex+Mono:wght@400;500&family=Archivo+Black&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Montserrat&family=Poppins&family=Inter&family=Roboto&family=Open+Sans&family=Bebas+Neue&family=Outfit&family=Raleway&family=Playfair+Display&family=Merriweather&family=Cormorant+Garamond&family=Great+Vibes&family=Allura&family=Pacifico&family=Lobster&family=Dancing+Script&family=Sacramento&family=Alex+Brush&family=Kaushan+Script&family=Anton&family=Bungee&family=League+Spartan&family=Oswald&family=Teko&family=Alfa+Slab+One&family=Cinzel&family=Orbitron&family=Audiowide&family=Exo+2&family=Rajdhani&family=Oxanium&family=Russo+One&family=Chakra+Petch&family=Michroma&family=Press+Start+2P&family=VT323&family=Silkscreen&family=Luckiest+Guy&family=Bangers&family=Fredoka&family=Baloo+2&family=Lilita+One&family=Jost&family=EB+Garamond&family=Libre+Baskerville&family=Bodoni+Moda&family=Nunito+Sans&family=Fraunces&family=DM+Serif+Display&family=Prata&family=La+Belle+Aurore&display=swap" rel="stylesheet">
 <style>
   :root{
     --bg:#0f1216; --panel:#161b22; --panel2:#1c232d; --line:#2a3441;
@@ -109,6 +110,10 @@
     <h2><span class="step">2</span> Texto no vídeo</h2>
     <textarea id="txt" placeholder="Digite o texto que vai aparecer em todos os vídeos (Enter quebra linha)"></textarea>
     <div class="row" style="margin-top:14px">
+      <div>
+        <label for="fonte">Fonte</label>
+        <select id="fonte"></select>
+      </div>
       <div>
         <label for="pos">Posição</label>
         <select id="pos">
@@ -469,8 +474,104 @@ $('dur').addEventListener('input',()=>{
   });
 });
 
+// ---------- fontes ----------
+const GRUPOS_FONTES={
+  'Impacto / Display':{
+    'Archivo Black':'"Archivo Black", sans-serif',
+    'Anton':'"Anton", sans-serif',
+    'Impact':'Impact, "Anton", sans-serif',
+    'Bebas Neue':'"Bebas Neue", sans-serif',
+    'Bungee':'"Bungee", sans-serif',
+    'Oswald':'"Oswald", sans-serif',
+    'Teko':'"Teko", sans-serif',
+    'Alfa Slab One':'"Alfa Slab One", serif',
+    'League Spartan':'"League Spartan", sans-serif',
+    'Luckiest Guy':'"Luckiest Guy", sans-serif',
+    'Bangers':'"Bangers", sans-serif',
+    'Lilita One':'"Lilita One", sans-serif',
+    'Fredoka':'"Fredoka", sans-serif',
+    'Baloo 2':'"Baloo 2", sans-serif'
+  },
+  'Sem serifa':{
+    'Helvetica':'Helvetica, Arial, sans-serif',
+    'Arial':'Arial, sans-serif',
+    'Montserrat':'"Montserrat", sans-serif',
+    'Poppins':'"Poppins", sans-serif',
+    'Inter':'"Inter", sans-serif',
+    'Roboto':'"Roboto", sans-serif',
+    'Open Sans':'"Open Sans", sans-serif',
+    'Outfit':'"Outfit", sans-serif',
+    'Raleway':'"Raleway", sans-serif',
+    'Gotham (similar)':'"Montserrat", sans-serif',
+    'Futura (similar)':'"Jost", sans-serif',
+    'Avenir (similar)':'"Nunito Sans", sans-serif',
+    'Proxima Nova (similar)':'"Montserrat", sans-serif',
+    'Satoshi (similar)':'"Inter", sans-serif'
+  },
+  'Serifadas':{
+    'Times New Roman':'"Times New Roman", Times, serif',
+    'Georgia':'Georgia, serif',
+    'Garamond':'"EB Garamond", Garamond, serif',
+    'Baskerville':'"Libre Baskerville", Baskerville, serif',
+    'Bodoni':'"Bodoni Moda", serif',
+    'Didot (similar)':'"Bodoni Moda", serif',
+    'Playfair Display':'"Playfair Display", serif',
+    'Merriweather':'"Merriweather", serif',
+    'Cormorant Garamond':'"Cormorant Garamond", serif',
+    'Cinzel':'"Cinzel", serif',
+    'Vogue (similar)':'"Bodoni Moda", serif',
+    'Tan Mon Cheri (similar)':'"Prata", serif',
+    'Glamour Absolute (similar)':'"DM Serif Display", serif',
+    'Black Mango (similar)':'"Fraunces", serif'
+  },
+  'Manuscritas':{
+    'Great Vibes':'"Great Vibes", cursive',
+    'Allura':'"Allura", cursive',
+    'Pacifico':'"Pacifico", cursive',
+    'Lobster':'"Lobster", cursive',
+    'Dancing Script':'"Dancing Script", cursive',
+    'Sacramento':'"Sacramento", cursive',
+    'Alex Brush':'"Alex Brush", cursive',
+    'Kaushan Script':'"Kaushan Script", cursive',
+    'Celinea (similar)':'"Great Vibes", cursive',
+    'Gistesy (similar)':'"La Belle Aurore", cursive'
+  },
+  'Tech / Gamer':{
+    'Orbitron':'"Orbitron", sans-serif',
+    'Audiowide':'"Audiowide", sans-serif',
+    'Exo 2':'"Exo 2", sans-serif',
+    'Rajdhani':'"Rajdhani", sans-serif',
+    'Oxanium':'"Oxanium", sans-serif',
+    'Russo One':'"Russo One", sans-serif',
+    'Chakra Petch':'"Chakra Petch", sans-serif',
+    'Michroma':'"Michroma", sans-serif'
+  },
+  'Pixel':{
+    'Press Start 2P':'"Press Start 2P", monospace',
+    'VT323':'"VT323", monospace',
+    'Silkscreen':'"Silkscreen", monospace',
+    'Pixel Operator (similar)':'"VT323", monospace',
+    'Minecraftia (similar)':'"Silkscreen", monospace'
+  }
+};
+(function popularFontes(){
+  const sel=$('fonte');
+  Object.entries(GRUPOS_FONTES).forEach(([grupo,fontes])=>{
+    const og=document.createElement('optgroup'); og.label=grupo;
+    Object.entries(fontes).forEach(([nome,fam])=>{
+      const o=document.createElement('option');
+      o.textContent=nome; o.value=fam;
+      if(nome==='Archivo Black') o.selected=true;
+      og.appendChild(o);
+    });
+    sel.appendChild(og);
+  });
+})();
+function fonteAtual(){ return $('fonte').value || '"Archivo Black", sans-serif'; }
+
 // ---------- preview e PNG do texto ----------
-['txt','pos','size','cor','box'].forEach(id=>$(id).addEventListener('input',drawPreview));
+['txt','pos','size','cor','box','fonte'].forEach(id=>$(id).addEventListener('input',drawPreview));
+$('fonte').addEventListener('change',drawPreview);
 async function drawPreview(){
   const txt=$('txt').value.trim();
   const ready=videos.find(v=>!v.removed&&v.w);
@@ -487,7 +588,9 @@ async function drawText(ctx,w,h){
   const txt=$('txt').value.trim(); if(!txt) return;
   const scale=w/1080;
   const fs=parseInt($('size').value)*scale;
-  ctx.font='400 '+fs+'px "Archivo Black", sans-serif';
+  const fam=fonteAtual();
+  try{ await document.fonts.load('400 '+Math.max(16,Math.round(fs))+'px '+fam); }catch(e){}
+  ctx.font='400 '+fs+'px '+fam;
   ctx.textAlign='center'; ctx.textBaseline='middle';
   const maxW=w*0.88, lines=[];
   txt.split('\n').forEach(par=>{
