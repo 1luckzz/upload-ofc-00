@@ -120,6 +120,7 @@
           <option value="top">Topo</option>
           <option value="center">Centro</option>
           <option value="bottom" selected>Rodapé</option>
+          <option value="custom">Personalizada (clique no preview)</option>
         </select>
       </div>
       <div>
@@ -128,7 +129,9 @@
           <option value="42">Pequeno</option>
           <option value="58" selected>Médio</option>
           <option value="76">Grande</option>
+          <option value="custom">Personalizado (px)</option>
         </select>
+        <input type="number" id="sizepx" min="8" max="400" value="58" style="display:none; margin-top:8px" placeholder="px">
       </div>
       <div>
         <label for="cor">Cor</label>
@@ -136,7 +139,7 @@
       </div>
     </div>
     <label class="check"><input type="checkbox" id="box" checked> Caixa escura atrás do texto (melhor leitura)</label>
-    <div class="preview" id="pvWrap"><canvas id="pv"></canvas></div>
+    <div class="preview" id="pvWrap"><canvas id="pv"></canvas><p class="hint" id="posHint" style="display:none">Clique ou arraste no preview acima pra posicionar o texto onde quiser.</p></div>
   </div>
 
   <div class="card">
@@ -570,8 +573,37 @@ const GRUPOS_FONTES={
 function fonteAtual(){ return $('fonte').value || '"Archivo Black", sans-serif'; }
 
 // ---------- preview e PNG do texto ----------
-['txt','pos','size','cor','box','fonte'].forEach(id=>$(id).addEventListener('input',drawPreview));
+['txt','pos','size','cor','box','fonte','sizepx'].forEach(id=>$(id).addEventListener('input',drawPreview));
 $('fonte').addEventListener('change',drawPreview);
+let posX=0.5, posY=0.5;
+$('pos').addEventListener('change',()=>{
+  const custom=$('pos').value==='custom';
+  $('posHint').style.display=custom?'block':'none';
+  $('pv').style.cursor=custom?'crosshair':'';
+  drawPreview();
+});
+$('size').addEventListener('change',()=>{
+  $('sizepx').style.display=($('size').value==='custom')?'block':'none';
+  drawPreview();
+});
+// clique/arrasto no preview posiciona o texto (modo personalizado)
+(function bindPosPicker(){
+  const pv=$('pv');
+  let dragging=false;
+  const setPos=e=>{
+    const r=pv.getBoundingClientRect();
+    posX=Math.min(1,Math.max(0,(e.clientX-r.left)/r.width));
+    posY=Math.min(1,Math.max(0,(e.clientY-r.top)/r.height));
+    drawPreview();
+  };
+  pv.addEventListener('pointerdown',e=>{
+    if($('pos').value!=='custom') return;
+    dragging=true; pv.setPointerCapture(e.pointerId); setPos(e); e.preventDefault();
+  });
+  pv.addEventListener('pointermove',e=>{ if(dragging) setPos(e); });
+  pv.addEventListener('pointerup',()=>dragging=false);
+  pv.addEventListener('pointercancel',()=>dragging=false);
+})();
 async function drawPreview(){
   const txt=$('txt').value.trim();
   const ready=videos.find(v=>!v.removed&&v.w);
@@ -587,7 +619,8 @@ async function drawText(ctx,w,h){
   await document.fonts.ready;
   const txt=$('txt').value.trim(); if(!txt) return;
   const scale=w/1080;
-  const fs=parseInt($('size').value)*scale;
+  const base=($('size').value==='custom')?(parseFloat($('sizepx').value)||58):parseInt($('size').value);
+  const fs=base*scale;
   const fam=fonteAtual();
   try{ await document.fonts.load('400 '+Math.max(16,Math.round(fs))+'px '+fam); }catch(e){}
   ctx.font='400 '+fs+'px '+fam;
@@ -603,22 +636,23 @@ async function drawText(ctx,w,h){
     lines.push(line);
   });
   const lh=fs*1.25, blockH=lines.length*lh;
-  let cy;
+  let cx=w/2, cy;
   const pos=$('pos').value;
-  if(pos==='top') cy=h*0.10+blockH/2;
+  if(pos==='custom'){ cx=w*posX; cy=h*posY; }
+  else if(pos==='top') cy=h*0.10+blockH/2;
   else if(pos==='center') cy=h/2;
   else cy=h*0.90-blockH/2;
   if($('box').checked){
     const bw=Math.min(maxW,Math.max(...lines.map(l=>ctx.measureText(l).width)))+fs*0.8;
     const bh=blockH+fs*0.6;
     ctx.fillStyle='rgba(0,0,0,0.55)';
-    roundRect(ctx,w/2-bw/2,cy-bh/2,bw,bh,fs*0.25); ctx.fill();
+    roundRect(ctx,cx-bw/2,cy-bh/2,bw,bh,fs*0.25); ctx.fill();
   }
   ctx.fillStyle=$('cor').value;
   ctx.strokeStyle='rgba(0,0,0,0.6)'; ctx.lineWidth=fs*0.06;
   lines.forEach((l,i)=>{
     const y=cy-blockH/2+lh/2+i*lh;
-    ctx.strokeText(l,w/2,y); ctx.fillText(l,w/2,y);
+    ctx.strokeText(l,cx,y); ctx.fillText(l,cx,y);
   });
 }
 function roundRect(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
